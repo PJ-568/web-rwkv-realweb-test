@@ -9,6 +9,29 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+    # inputs:
+    #   MODEL_URL:
+    #     type: string
+    #     description: '模型下载地址'
+    #     required: true
+    #     default: 'https://huggingface.co/BlinkDL/rwkv-5-world/resolve/main/RWKV-5-World-0.4B-v2-20231113-ctx4096.pth'
+
+    #   MODEL_NAME:
+    #     type: string
+    #     description: '模型名称'
+    #     required: true
+    #     default: 'RWKV-5-World-0.4B-v2-20231113-ctx4096.pth'
+
+    #   DEPLOY_TO_GITHUB_PAGES:
+    #     type: boolean
+    #     description: '是否部署到 Pages'
+    #     required: true
+    #     default: true
+
+env:
+  MODEL_URL: https://huggingface.co/BlinkDL/rwkv-5-world/resolve/main/RWKV-5-World-0.4B-v2-20231113-ctx4096.pth
+  MODEL_NAME: RWKV-5-World-0.4B-v2-20231113-ctx4096
+
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
@@ -29,6 +52,26 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout web-rwkv-converter
+        uses: actions/checkout@v4
+        with:
+          repository: 'cryscan/web-rwkv-converter'
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          target: wasm32-unknown-unknown
+      - name: Build model
+        run: |
+          echo '创建 models/：'
+          mkdir /home/runner/models
+          # curl -# -O $MODEL_URL
+          wget $MODEL_URL
+          mv ./$MODEL_NAME.pth /home/runner/models
+          file /home/runner/models/$MODEL_NAME.pth
+          cargo run --release --example converter -- --input /home/runner/models/$MODEL_NAME.pth
+          rm /home/runner/models/$MODEL_NAME.pth
       - name: Checkout
         uses: actions/checkout@v4
       - name: Update Packages
@@ -37,25 +80,60 @@ jobs:
         uses: actions/setup-node@v4.0.2
       - name: Install Typescript
         run: npm install -g typescript
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          target: wasm32-unknown-unknown
       - name: Install wasm-pack
         run: cargo install wasm-pack
       - name: Build
         run: |
           RUSTFLAGS=--cfg=web_sys_unstable_apis wasm-pack build --release --target no-modules
           npx tsc
+      - name: Attach model
+        run: |
+          mkdir assets/resolve
+          cp -uvr /home/runner/models/$MODEL_NAME.st assets/resolve/
+      - name: Delete 冗
+        run: |
+          # 删除目标目录下的构建中间文件和元数据
+          # rm -r target/release/.fingerprint
+          # rm -r target/release/deps/*.d
+          # rm -r target/release/deps/*.rlib
+          # rm -r target/release/deps/*.rmeta
+          # rm -r target/release/incremental
+          # rm -r target/release/.cargo-lock
+          
+          # 删除源代码相关的构建脚本和输出
+          # rm -r target/*/build/*
+          
+          # 如果你确定不需要调试符号或特定于开发环境的文件，也可以移除它们
+          # 例如，某些 `.d` 文件可能用于链接时的依赖描述，但在部署环境中不是必须的。
+          # rm -r target/*/release/deps/*.d
+          
+          # 清理 wasm32 目标下的相似文件和目录
+          # rm -r target/wasm32-unknown-unknown/release/.fingerprint
+          # rm -r target/wasm32-unknown-unknown/release/deps/*.d
+          # rm -r target/wasm32-unknown-unknown/release/deps/*.rlib
+          # rm -r target/wasm32-unknown-unknown/release/deps/*.rmeta
+          # rm -r target/wasm32-unknown-unknown/release/incremental
+          # rm -r target/wasm32-unknown-unknown/release/.cargo-lock
+          # rm -r target/wasm32-unknown-unknown/release/build/*
+
+          # 清理构建和源代码
+          rm -r src/
+          rm -r target/
+          rm -r *.ts
+          rm -r *.cmd
+          rm -r *.bash
+          
+          echo "完成清理无需部署的文件和目录"
       - name: Setup Pages
+        # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         uses: actions/configure-pages@v4
       - name: Upload artifact
+        # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload entire repository
           path: '.'
       - name: Deploy to GitHub Pages
+        # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         id: deployment
         uses: actions/deploy-pages@v4
