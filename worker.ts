@@ -100,7 +100,7 @@ this.addEventListener("message", async function (e: MessageEvent<Uint8Array[] | 
     var input = e.data;
     console.log(input);
 
-    var prompt = `User: Hi!\n\nAssistant: Hello! I'm your AI assistant. I'm here to help you with various tasks, such as answering questions, brainstorming ideas, drafting emails, writing code, providing advice, and much more.\n\nUser: ${input}\n\nAssistant:`;
+    var prompt = `User: Hi!\n\nAssistant: Hello! I'm the LB, your AI assistant. I'm here to help you with various tasks.\n\nUser: ${input}\n\nAssistant:`;
     var state = new StateId;
 
     var encoder = new TextEncoder;
