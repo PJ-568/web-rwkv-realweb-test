@@ -31,6 +31,8 @@ on:
 env:
   MODEL_URL: https://huggingface.co/BlinkDL/rwkv-5-world/resolve/main/RWKV-5-World-0.4B-v2-20231113-ctx4096.pth
   MODEL_NAME: RWKV-5-World-0.4B-v2-20231113-ctx4096
+  TEST_MODEL_URL: https://huggingface.co/BlinkDL/rwkv-4-world/resolve/main/RWKV-4-World-0.1B-v1-20230520-ctx4096.pth
+  TEST_MODEL_NAME: RWKV-4-World-0.1B-v1-20230520-ctx4096
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -52,87 +54,120 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout web-rwkv-converter
-        uses: actions/checkout@v4
-        with:
-          repository: 'cryscan/web-rwkv-converter'
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
           target: wasm32-unknown-unknown
+
+      - name: Restore cache for /home/runner/models
+        id: cache-home-runner-models
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/models
+          key: ${{ runner.os }}-home-runner-models-${{ env.MODEL_URL }}-${{ env.TEST_MODEL_URL }}
+          restore-keys: |
+            ${{ runner.os }}-home-runner-models-${{ env.MODEL_URL }}-${{ env.TEST_MODEL_URL }}
+
+      - name: Checkout web-rwkv-converter
+        if: steps.cache-home-runner-models.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: 'cryscan/web-rwkv-converter'
+
       - name: Build model
+        if: steps.cache-home-runner-models.outputs.cache-hit != 'true'
         run: |
           echo '创建 models/：'
           mkdir /home/runner/models
-          # curl -# -O $MODEL_URL
+          # 下载模型文件并转换
           wget $MODEL_URL
           mv ./$MODEL_NAME.pth /home/runner/models
           file /home/runner/models/$MODEL_NAME.pth
           cargo run --release --example converter -- --input /home/runner/models/$MODEL_NAME.pth
+          # 下载测试模型文件并转换
+          wget $TEST_MODEL_URL
+          mv ./$TEST_MODEL_NAME.pth /home/runner/models
+          file /home/runner/models/$TEST_MODEL_NAME.pth
+          cargo run --release --example converter -- --input /home/runner/models/$TEST_MODEL_NAME.pth
+          # 删除转换前模型
           rm /home/runner/models/$MODEL_NAME.pth
+          rm /home/runner/models/$TEST_MODEL_NAME.pth
+
+      - name: Save cache for /home/runner/models
+        if: steps.cache-home-runner-models.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/models
+          key: ${{ runner.os }}-home-runner-models-${{ env.MODEL_URL }}-${{ env.TEST_MODEL_URL }}
+          
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Update Packages
         run: sudo apt-get update -yq --allow-releaseinfo-change
+
       - name: Install Node.js
         uses: actions/setup-node@v4.0.2
+
       - name: Install Typescript
         run: npm install -g typescript
+
+      - name: Restore cache for install wasm-pack
+        id: cache-install-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ./.cargo
+          key: ${{ runner.os }}-install-wasm-pack-${{ hashFiles('./.cargo/**') }}
+          restore-keys: |
+            ${{ runner.os }}-install-wasm-pack-
+
       - name: Install wasm-pack
+        if: steps.cache-install-wasm-pack.outputs.cache-hit != 'true'
         run: cargo install wasm-pack
+
+      - name: Save cache for install wasm-pack
+        if: steps.cache-install-wasm-pack.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ./.cargo
+          key: ${{ runner.os }}-install-wasm-pack-${{ hashFiles('./.cargo/**') }}
+
       - name: Build
         run: |
           RUSTFLAGS=--cfg=web_sys_unstable_apis wasm-pack build --release --target no-modules
           npx tsc
+
       - name: Attach model
         run: |
           mkdir assets/resolve
           cp -uvr /home/runner/models/$MODEL_NAME.st assets/resolve/
+          cp -uvr /home/runner/models/$TEST_MODEL_NAME.st assets/resolve/
+
       - name: Delete 冗
         run: |
-          # 删除目标目录下的构建中间文件和元数据
-          # rm -r target/release/.fingerprint
-          # rm -r target/release/deps/*.d
-          # rm -r target/release/deps/*.rlib
-          # rm -r target/release/deps/*.rmeta
-          # rm -r target/release/incremental
-          # rm -r target/release/.cargo-lock
-          
-          # 删除源代码相关的构建脚本和输出
-          # rm -r target/*/build/*
-          
-          # 如果你确定不需要调试符号或特定于开发环境的文件，也可以移除它们
-          # 例如，某些 `.d` 文件可能用于链接时的依赖描述，但在部署环境中不是必须的。
-          # rm -r target/*/release/deps/*.d
-          
-          # 清理 wasm32 目标下的相似文件和目录
-          # rm -r target/wasm32-unknown-unknown/release/.fingerprint
-          # rm -r target/wasm32-unknown-unknown/release/deps/*.d
-          # rm -r target/wasm32-unknown-unknown/release/deps/*.rlib
-          # rm -r target/wasm32-unknown-unknown/release/deps/*.rmeta
-          # rm -r target/wasm32-unknown-unknown/release/incremental
-          # rm -r target/wasm32-unknown-unknown/release/.cargo-lock
-          # rm -r target/wasm32-unknown-unknown/release/build/*
-
           # 清理构建和源代码
           rm -r src/
           rm -r target/
           rm -r *.ts
           rm -r *.cmd
           rm -r *.bash
-          
+          rm -r *.lock
+          rm -r *.toml
           echo "完成清理无需部署的文件和目录"
+
       - name: Setup Pages
         # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         uses: actions/configure-pages@v4
+
       - name: Upload artifact
         # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload entire repository
           path: '.'
+
       - name: Deploy to GitHub Pages
         # if: ${{ github.event.inputs.DEPLOY_TO_GITHUB_PAGES == 'true' }}
         id: deployment

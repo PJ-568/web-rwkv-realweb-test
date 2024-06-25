@@ -1,3 +1,6 @@
+// 以上代码为新增
+// 以下代码为更改
+
 importScripts("./pkg/web_rwkv_realweb.js")
 
 const { Runtime, Sampler, StateId, Tensor, TensorReader } = wasm_bindgen;
@@ -13,7 +16,7 @@ function getUint64(dataview: DataView, byteOffset: number, littleEndian?: boolea
         : 2 ** 32 * left + right;
 
     if (!Number.isSafeInteger(combined))
-        console.warn(combined, "exceeds MAX_SAFE_INTEGER. Precision may be lost");
+        console.warn(combined, "变量 combined 超过了 JavaScript 中的最大安全整数 MAX_SAFE_INTEGER，或导致精度损失。");
 
     return combined;
 }
@@ -24,7 +27,7 @@ interface TensorInfo {
 }
 
 async function initReader(blob: Blob) {
-    console.log("model data size: ", blob.size);
+    console.log("模型数据大小：", blob.size);
 
     if (blob.size < 8) {
         throw "header too small";
@@ -60,7 +63,7 @@ async function initTokenizer() {
 
     var req = await fetch("assets/rwkv_vocab_v20230424.json");
     var vocab = await req.text();
-    console.log("tokenizer: " + vocab.length);
+    console.log("分词器：" + vocab.length);
     return new wasm_bindgen.Tokenizer(vocab);
 }
 
@@ -73,7 +76,7 @@ async function initRuntime(blob: Blob) {
 
     let reader = await initReader(blob);
     let runtime = await new Runtime(reader, 0, 0, true);
-    console.log("runtime loaded")
+    console.log("已加载运行时")
     return runtime;
 }
 
@@ -100,7 +103,7 @@ this.addEventListener("message", async function (e: MessageEvent<Uint8Array[] | 
     var input = e.data;
     console.log(input);
 
-    var prompt = `User: Hi!\n\nAssistant: Hello! I'm the LB, your AI assistant. I'm here to help you with various tasks.\n\nUser: ${input}\n\nAssistant:`;
+    var prompt = input as string;// var prompt = `User: Hi!\n\nAssistant: Hello! I'm the LB, your AI assistant. I'm here to help you with various tasks.\n\nUser: ${input}\n\nAssistant:`;
     var state = new StateId;
 
     var encoder = new TextEncoder;
@@ -109,14 +112,25 @@ this.addEventListener("message", async function (e: MessageEvent<Uint8Array[] | 
     var tokens = tokenizer.encode(encoder.encode(prompt));
     var response = "";
     var out = []
-    console.log(`prompt length: ${tokens.length}`);
+    console.log(`提示词长度：${tokens.length}`);
 
     var logits = new Float32Array(65536);
     var probs = new Float32Array(65536);
 
+    let shouldInterrupt = false; // 是否中断输出
+
     await this.navigator.locks.request("model", async (lock) => {
         this.postMessage(null);
-        while (!response.includes("\n\n") && out.length < 500) {
+
+        // 添加一个消息监听器来处理中断信号
+        this.addEventListener("message", function interruptHandler(interruptEvent) {
+            if (interruptEvent.data === '/user-lb-interrupt') {
+                shouldInterrupt = true;
+                this.removeEventListener("message", interruptHandler);
+            }
+        });
+
+        while (!response.includes("\n\n") && out.length < 500 && !shouldInterrupt) {
             await runtime.run_one(tokens, logits, state);
             await runtime.softmax_one(logits, probs);
 
@@ -128,5 +142,14 @@ this.addEventListener("message", async function (e: MessageEvent<Uint8Array[] | 
             response += word;
             this.postMessage(word);
         }
+
+        if (out.length >= 500) {
+            this.postMessage('【超出】');
+        } else {
+            this.postMessage('【结束】');
+        }
+
+        // 清除中断标志，以便下次运行
+        shouldInterrupt = false;
     });
 }, false);

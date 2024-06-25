@@ -1,37 +1,28 @@
-# Web-RWKV-RealWeb
+# 状态预演
 
-Run the RWKV model locally in browser on your GPU. This demo is built upon the [web-rwkv](https://github.com/cryscan/web-rwkv) inference engine.
+## 初始化
 
-Check the [live demo](https://cryscan.github.io/web-rwkv-realweb/)!
+### 初态
 
-## Dependencies
+- 信息显示区
+  - 模型选择菜单：显示
+  - 模型加载菜单：隐藏
+- 输入区：隐藏
 
-### `node.js` and `typescript`
+### 模型加载状态
 
-To install `typescript`, use
-```bash
-$ npm install -g typescript
-```
+- 信息显示区
+  - 模型选择菜单：隐藏
+  - 模型加载菜单：显示
+- 输入区：隐藏
 
-### `rust` and `wasm-pack`
+### 模型加载完毕
 
-To install `wasm-pack`, use
-```bash
-$ cargo install wasm-pack
-```
+- 信息显示区：清空后打印默认信息
+- 输入区：显示
 
-### Model Download
+## 运行时
 
-Download the model [here](https://huggingface.co/cgisky/AI00_RWKV_V5/blob/main/RWKV-5-World-0.4B-v2-20231113-ctx4096.st),
-and put it under `assets/models`.
+### 用户完成输入
 
-## Compile and Pack
-
-To build and pack, run
-```bash
-$ ./build.cmd
-```
-
-## Run
-
-Start a local http server to serve the folder, open the page in your browser.
+- 监听键盘组合键和按钮提交事件
