@@ -98,10 +98,10 @@ async function load() {
 
     let response = await cache.match(url).then(async (value) => {
         if (value !== undefined) {
-            console.log("开始加载已缓存模型");
+            console.log("加载已缓存模型");
             return value;
         }
-        console.log("开始加载未缓存模型");
+        console.log("加载未缓存模型");
         let response = await fetch(url);
         cache.put(url, response.clone());
         return response;
